@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 import UIKit
-import UserNotifications
+@preconcurrency import UserNotifications
 
 /// 예약 실행 엔진 (서버 없음, iPhone 혼자 실행)
 ///  1. 앱이 살아 있으면(백그라운드 유지 포함) 15초마다 확인해 정시에 실행

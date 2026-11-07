@@ -24,11 +24,16 @@ struct HomeView: View {
                     if !lights.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             SectionLabel("조명")
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: lights.count == 1 ? 1 : 2),
-                                      spacing: 12) {
-                                ForEach(lights) { light in
-                                    LightTile(device: light, busy: home.busy.contains(light.uid)) {
-                                        home.setLight(light, on: light.isOn != true)
+                            if lights.count == 1, let light = lights.first {
+                                LightWideTile(device: light, busy: home.busy.contains(light.uid)) {
+                                    home.setLight(light, on: light.isOn != true)
+                                }
+                            } else {
+                                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
+                                    ForEach(lights) { light in
+                                        LightTile(device: light, busy: home.busy.contains(light.uid)) {
+                                            home.setLight(light, on: light.isOn != true)
+                                        }
                                     }
                                 }
                             }
@@ -167,6 +172,46 @@ struct LightTile: View {
             }
             .frame(maxWidth: .infinity, minHeight: 132, alignment: .leading)
             .card()
+        }
+        .buttonStyle(PressableStyle())
+        .sensoryFeedback(.impact(weight: .light), trigger: isOn)
+        .animation(.easeOut(duration: 0.2), value: isOn)
+    }
+}
+
+/// 방에 조명이 하나일 때: 가로로 넓은 큰 스위치
+struct LightWideTile: View {
+    let device: Device
+    let busy: Bool
+    let action: () -> Void
+
+    private var isOn: Bool { device.isOn == true }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                IconBadge(symbol: isOn ? "lightbulb.fill" : "lightbulb", tint: .yellow, active: isOn, size: 60)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(device.displayName)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(device.isOn == nil ? "상태 모름" : (isOn ? "켜짐" : "꺼짐"))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if busy {
+                    ProgressView()
+                } else {
+                    Image(systemName: "power")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(isOn ? Color.black : Color.secondary)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(isOn ? Color.yellow : Color(.tertiarySystemFill)))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card(padding: 18)
         }
         .buttonStyle(PressableStyle())
         .sensoryFeedback(.impact(weight: .light), trigger: isOn)

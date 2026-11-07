@@ -144,12 +144,14 @@ final class ScheduleStore: ObservableObject {
         let place = Room.display(schedule.room)
         let result: String
         do {
+            var message = "예약한 동작을 실행했어요."
             if !isDemo {
-                try await Self.execute(schedule.action, room: schedule.room)
+                let action = schedule.action, room = schedule.room
+                message = try await BackgroundRunner.run { try await HomeActions.perform(action, room: room) }
             }
             result = "완료"
             if notifyOnRun {
-                post(title: "\(place) · \(schedule.action.title)", body: "예약한 동작을 실행했어요.", scheduleID: nil)
+                post(title: "\(place) · \(schedule.action.title)", body: message, scheduleID: nil)
             }
         } catch {
             result = "실패 — \(error.localizedDescription)"
@@ -161,7 +163,6 @@ final class ScheduleStore: ObservableObject {
         }
         save()
         rescheduleNotifications()
-        await HomeStore.shared.refresh(quiet: true)
     }
 
     /// 알림의 [지금 실행] 버튼 (앱이 꺼져 있어도 백그라운드에서 호출됨)
@@ -169,51 +170,6 @@ final class ScheduleStore: ObservableObject {
         let store = ScheduleStore.shared
         store.start()
         await store.run(id: id, occurrence: nil)
-    }
-
-    /// 실제 제어: 실행 시점의 기기 목록에서 방/종류로 찾는다 (UID 고정 안 함)
-    private static func execute(_ action: ScheduleAction, room: String) async throws {
-        let client = ElifeClient.shared
-        let inRoom = try await client.fetchDevices().filter { $0.room == room }
-        func first(_ type: String, _ name: String) throws -> Device {
-            guard let device = inRoom.first(where: { $0.type == type }) else { throw ElifeError.noDevice(name) }
-            return device
-        }
-        switch action {
-        case .light(let on):
-            let lights = inRoom.filter { $0.type == "light" }
-            guard !lights.isEmpty else { throw ElifeError.noDevice("조명") }
-            for light in lights {
-                try await client.controlAll(type: "light", uid: light.uid, control: on ? "on" : "off")
-            }
-        case .lightLevel(let level):
-            let lights = inRoom.filter { $0.type == "light" }
-            guard !lights.isEmpty else { throw ElifeError.noDevice("조명") }
-            for light in lights {
-                if light.isOn != true {
-                    try await client.controlAll(type: "light", uid: light.uid, control: "on")
-                }
-                try await client.control(type: "light", uid: light.uid, operation: ["value": light.brightnessValue(Device.snapBrightness(level))])
-            }
-        case .sockets(let on):
-            let sockets = inRoom.filter { $0.type == "wallsocket" }
-            guard !sockets.isEmpty else { throw ElifeError.noDevice("콘센트") }
-            for socket in sockets {
-                try await client.controlAll(type: "wallsocket", uid: socket.uid, control: on ? "on" : "off")
-            }
-        case .aircon(let on, let temp):
-            let device = try first("aircon", "에어컨")
-            try await client.control(type: "aircon", uid: device.uid, operation: ["control": on ? "on" : "off"])
-            if on, let temp {
-                try await client.control(type: "aircon", uid: device.uid, operation: ["set_temp": String(temp)])
-            }
-        case .heat(let on, let temp):
-            let device = try first("heat", "난방")
-            try await client.control(type: "heat", uid: device.uid, operation: ["control": on ? "on" : "off"])
-            if on, let temp {
-                try await client.control(type: "heat", uid: device.uid, operation: ["set_temp": String(temp)])
-            }
-        }
     }
 
     // MARK: - Background keep-alive

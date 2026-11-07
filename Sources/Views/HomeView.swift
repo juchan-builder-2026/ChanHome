@@ -5,6 +5,7 @@ struct HomeView: View {
     @State private var climateUID: String?
     @State private var lightUID: String?
     @State private var showSettings = false
+    @State private var showShortcuts = ProcessInfo.processInfo.arguments.contains("-demoShortcuts")
     @State private var confirmAllOff = false
 
     var body: some View {
@@ -108,6 +109,7 @@ struct HomeView: View {
                 LightSheet(uid: item.id)
             }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(isPresented: $showShortcuts) { NavigationStack { ShortcutsGuideView() } }
             .confirmationDialog("집 안의 모든 조명을 끌까요?", isPresented: $confirmAllOff, titleVisibility: .visible) {
                 Button("모든 조명 끄기", role: .destructive) { home.allLightsOff() }
             }

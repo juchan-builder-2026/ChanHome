@@ -134,6 +134,12 @@ final class HomeStore: ObservableObject {
         }
     }
 
+    /// 단축어 · 일정이 화면 밖에서 읽어 온 최신 상태를 반영
+    static func ingest(_ list: [Device]) {
+        guard !list.isEmpty else { return }
+        shared.apply(list)
+    }
+
     private func apply(_ list: [Device]) {
         devices = list
         lastUpdated = Date()

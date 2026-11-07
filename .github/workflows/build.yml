@@ -109,6 +109,7 @@ jobs:
   # 시뮬레이터에서 데모 데이터(-demo, 네트워크 사용 안 함)로 화면을 찍어 아티팩트로 올린다
   screenshots:
     runs-on: macos-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -142,7 +143,11 @@ jobs:
           print(pick["udid"])')
           echo "UDID=$UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID"
-          xcrun simctl bootstatus "$UDID" -b
+          for i in $(seq 1 60); do
+            xcrun simctl list devices | grep "$UDID" | grep -q "(Booted)" && break
+            sleep 5
+          done
+          sleep 25
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
           xcrun simctl install "$UDID" "$APP_PATH"
 
@@ -161,6 +166,7 @@ jobs:
           shoot 2-climate-light -demoClimate
           shoot 3-schedules-light -demoSchedules
           shoot 4-login-light -demoLogin
+          shoot 8-shortcuts-light -demoShortcuts
           xcrun simctl ui "$UDID" appearance dark
           shoot 5-home-dark
           shoot 6-climate-dark -demoClimate

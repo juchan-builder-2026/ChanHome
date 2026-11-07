@@ -341,6 +341,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        ShortcutsGuideView()
+                    } label: {
+                        Label("단축어 · Siri · 동작 버튼", systemImage: "square.stack.3d.up.fill")
+                    }
+                } footer: {
+                    Text("앱을 열지 않고 Siri, 동작 버튼, 제어 센터, 자동화로 조명과 냉난방을 조작할 수 있어요.")
+                }
+
+                Section {
                     Toggle("백그라운드에서 일정 실행", isOn: $store.backgroundEnabled)
                     Toggle("실행 결과 알림", isOn: $store.notifyOnRun)
                 } header: {

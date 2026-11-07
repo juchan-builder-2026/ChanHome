@@ -1,0 +1,20 @@
+name: ChanHome
+options:
+  bundleIdPrefix: com.chan
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  ChanHome:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - Sources
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.chan.home
+      INFOPLIST_FILE: Sources/Info.plist
+      GENERATE_INFOPLIST_FILE: NO
+      SWIFT_VERSION: "5.9"
+      TARGETED_DEVICE_FAMILY: "1"
+      CODE_SIGNING_ALLOWED: NO
+      CODE_SIGNING_REQUIRED: NO

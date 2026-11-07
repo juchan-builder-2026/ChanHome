@@ -257,10 +257,10 @@ struct ChanHomeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: LightPowerIntent(),
             phrases: [
-                "\(.applicationName) \(\.$room) 불 \(\.$action)",
-                "\(.applicationName) \(\.$room) 조명 \(\.$action)",
-                "\(.applicationName)에서 \(\.$room) 불 \(\.$action)",
                 "\(.applicationName) 불 \(\.$action)",
+                "\(.applicationName) 조명 \(\.$action)",
+                "\(.applicationName) \(\.$room) 불",
+                "\(.applicationName) \(\.$room) 조명",
                 "\(.applicationName) 불",
             ],
             shortTitle: "조명 켜기/끄기",
@@ -269,7 +269,6 @@ struct ChanHomeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: LightBrightnessIntent(),
             phrases: [
-                "\(.applicationName) \(\.$room) 밝기 \(\.$brightness)",
                 "\(.applicationName) 밝기 \(\.$brightness)",
                 "\(.applicationName)에서 밝기 \(\.$brightness)로",
             ],
@@ -289,7 +288,6 @@ struct ChanHomeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: AirconIntent(),
             phrases: [
-                "\(.applicationName) \(\.$room) 에어컨 \(\.$power)",
                 "\(.applicationName) 에어컨 \(\.$power)",
             ],
             shortTitle: "에어컨",
@@ -298,7 +296,6 @@ struct ChanHomeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: HeatIntent(),
             phrases: [
-                "\(.applicationName) \(\.$room) 난방 \(\.$power)",
                 "\(.applicationName) 난방 \(\.$power)",
                 "\(.applicationName) 보일러 \(\.$power)",
             ],
@@ -318,7 +315,7 @@ struct ChanHomeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: SocketsIntent(),
             phrases: [
-                "\(.applicationName) \(\.$room) 콘센트 \(\.$power)",
+                "\(.applicationName) 콘센트 \(\.$power)",
             ],
             shortTitle: "콘센트",
             systemImageName: "powerplug.fill"

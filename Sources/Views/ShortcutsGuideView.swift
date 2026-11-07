@@ -19,12 +19,14 @@ struct ShortcutsGuideView: View {
 
             Section("Siri에게 말하기") {
                 PhraseRow(phrase: "집 불", detail: "방 3 조명 켜기/끄기 전환")
-                PhraseRow(phrase: "집 방 3 불 꺼", detail: "방 이름과 켜기·끄기를 함께")
-                PhraseRow(phrase: "집 밝기 50%", detail: "17 · 33 · 50 · 67 · 83 · 100% 중 하나")
+                PhraseRow(phrase: "집 불 꺼 / 집 불 켜", detail: "방 3 조명")
+                PhraseRow(phrase: "집 거실 불", detail: "다른 방 조명 전환 (방 1 · 방 2 · 거실)")
+                PhraseRow(phrase: "집 밝기 50%", detail: "방 3 · 17 · 33 · 50 · 67 · 83 · 100% (최소 · 중간 · 최대도 OK)")
                 PhraseRow(phrase: "집 모든 불 꺼", detail: "집 안 조명 전부 끄기")
                 PhraseRow(phrase: "집 에어컨 켜", detail: "온도는 단축어 앱에서 지정")
                 PhraseRow(phrase: "집 난방 꺼", detail: "보일러라고 해도 돼요")
                 PhraseRow(phrase: "집 상태 알려줘", detail: "조명 · 냉난방 · 콘센트 상태 읽어주기")
+                PhraseRow(phrase: "집 방 1 상태", detail: "다른 방 상태")
                 PhraseRow(phrase: "집 가스 잠가", detail: "가스 밸브 잠금")
             }
 

@@ -166,11 +166,13 @@ jobs:
           shoot 2-climate-light -demoClimate
           shoot 3-schedules-light -demoSchedules
           shoot 4-login-light -demoLogin
+          shoot 9-wake-light -demoWake
           shoot 8-shortcuts-light -demoShortcuts
           xcrun simctl ui "$UDID" appearance dark
           shoot 5-home-dark
           shoot 6-climate-dark -demoClimate
           shoot 7-schedules-dark -demoSchedules
+          shoot 10-wake-dark -demoWake
           ls -l shots
 
       - name: Upload Screenshots

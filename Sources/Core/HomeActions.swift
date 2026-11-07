@@ -45,6 +45,31 @@ enum HomeActions {
         return ("\(Room.display(room)) 조명 밝기를 \(actual)%로 맞췄어요", after)
     }
 
+    /// 기상/취침 조명 한 단계. level == nil 이면 끄기.
+    /// 꺼진 조명을 켤 때는 밝기를 먼저 보내고 → 켜고 → 다시 밝기를 보낸다
+    /// (켜는 순간 예전 밝기로 번쩍이지 않게).
+    static func rampStep(room: String, level: Int?) async throws -> (String, [Device]) {
+        let lights = try await find(room: room, type: "light", name: "조명")
+        guard let level else {
+            for light in lights where light.isOn != false {
+                try await client.controlAll(type: "light", uid: light.uid, control: "off")
+            }
+            return ("\(Room.display(room)) 조명을 껐어요", try await verified())
+        }
+        let snapped = Device.snapBrightness(level)
+        for light in lights {
+            let value = light.brightnessValue(snapped)
+            if light.isOn != true {
+                try? await client.control(type: "light", uid: light.uid, operation: ["value": value])
+                try await client.controlAll(type: "light", uid: light.uid, control: "on")
+            }
+            try await client.control(type: "light", uid: light.uid, operation: ["value": value])
+        }
+        let after = try await verified()
+        let actual = after.first(where: { $0.room == room && $0.type == "light" })?.brightness ?? snapped
+        return ("\(Room.display(room)) 조명 \(actual)%", after)
+    }
+
     static func allLightsOff() async throws -> (String, [Device]) {
         let lights = try await client.fetchDevices().filter { $0.type == "light" && $0.isOn != false }
         for light in lights {

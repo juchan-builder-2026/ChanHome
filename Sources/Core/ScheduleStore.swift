@@ -177,7 +177,8 @@ final class ScheduleStore: ObservableObject {
     var isKeepingAlive: Bool { KeepAlive.shared.isRunning }
 
     func updateBackgroundMode() {
-        let needed = !isDemo && backgroundEnabled && HomeStore.shared.isSignedIn && schedules.contains { $0.enabled }
+        let needed = !isDemo && backgroundEnabled && HomeStore.shared.isSignedIn
+            && (schedules.contains { $0.enabled } || WakeEngine.shared.needsBackground)
         if needed { KeepAlive.shared.start() } else { KeepAlive.shared.stop() }
         objectWillChange.send()
     }
@@ -187,7 +188,7 @@ final class ScheduleStore: ObservableObject {
     static func registerCategories() {
         let run = UNNotificationAction(identifier: ScheduleKeys.runActionID, title: "지금 실행", options: [])
         let category = UNNotificationCategory(identifier: ScheduleKeys.categoryID, actions: [run], intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([category])
+        UNUserNotificationCenter.current().setNotificationCategories([category, SystemAlarms.registerCategory()])
     }
 
     private func requestNotificationPermission() {

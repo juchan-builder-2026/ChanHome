@@ -13,16 +13,24 @@ struct RootView: View {
 }
 
 struct MainTabs: View {
-    @State private var tab: Int = ProcessInfo.processInfo.arguments.contains("-demoSchedules") ? 1 : 0
+    @State private var tab: Int = {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-demoWake") { return 1 }
+        if arguments.contains("-demoSchedules") { return 2 }
+        return 0
+    }()
 
     var body: some View {
         TabView(selection: $tab) {
             HomeView()
                 .tabItem { Label("홈", systemImage: "house.fill") }
                 .tag(0)
+            WakeView()
+                .tabItem { Label("기상", systemImage: "alarm.fill") }
+                .tag(1)
             ScheduleListView()
                 .tabItem { Label("일정", systemImage: "clock.fill") }
-                .tag(1)
+                .tag(2)
         }
     }
 }

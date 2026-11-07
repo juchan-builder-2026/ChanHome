@@ -11,9 +11,9 @@
     <key>CFBundleDisplayName</key>
     <string>집</string>
     <key>CFBundleVersion</key>
-    <string>4</string>
+    <string>5</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0.0</string>
+    <string>2.1.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleDevelopmentRegion</key>
@@ -50,6 +50,8 @@
     </array>
     <key>UILaunchScreen</key>
     <dict/>
+    <key>NSAlarmKitUsageDescription</key>
+    <string>기상 시간에 시계 앱 알람처럼 울리고, 끄면 방 조명을 켜기 위해 필요해요.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
 </dict>

@@ -28,6 +28,9 @@ struct ShortcutsGuideView: View {
                 PhraseRow(phrase: "집 상태 알려줘", detail: "조명 · 냉난방 · 콘센트 상태 읽어주기")
                 PhraseRow(phrase: "집 방 1 상태", detail: "다른 방 상태")
                 PhraseRow(phrase: "집 가스 잠가", detail: "가스 밸브 잠금")
+                PhraseRow(phrase: "집 잘게", detail: "취침 모드 — 15분 동안 서서히 어두워지다 꺼짐")
+                PhraseRow(phrase: "집 알람 꺼", detail: "다음 기상 알람 한 번 건너뛰기 (다시 말하면 취소)")
+                PhraseRow(phrase: "집 알람 몇 시", detail: "다음 기상 알람과 조명 시작 시각")
             }
 
             Section {

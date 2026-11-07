@@ -312,21 +312,36 @@ struct ChanHomeShortcuts: AppShortcutsProvider {
             shortTitle: "방 상태",
             systemImageName: "house"
         )
+        // 콘센트 · 환기는 단축어 앱의 동작으로만 (앱 단축어는 최대 10개)
         AppShortcut(
-            intent: SocketsIntent(),
+            intent: SleepIntent(),
             phrases: [
-                "\(.applicationName) 콘센트 \(\.$power)",
+                "\(.applicationName) 잘게",
+                "\(.applicationName) 잘 자",
+                "\(.applicationName) 취침",
+                "\(.applicationName) \(\.$duration) 동안 불 꺼",
             ],
-            shortTitle: "콘센트",
-            systemImageName: "powerplug.fill"
+            shortTitle: "취침 모드",
+            systemImageName: "moon.zzz.fill"
         )
         AppShortcut(
-            intent: VentIntent(),
+            intent: SkipNextWakeIntent(),
             phrases: [
-                "\(.applicationName) 환기 \(\.$power)",
+                "\(.applicationName) 알람 꺼",
+                "\(.applicationName) 내일 알람 꺼",
+                "\(.applicationName) 알람 건너뛰기",
             ],
-            shortTitle: "환기",
-            systemImageName: "fan.fill"
+            shortTitle: "다음 알람 건너뛰기",
+            systemImageName: "alarm.waves.left.and.right"
+        )
+        AppShortcut(
+            intent: WakeStatusIntent(),
+            phrases: [
+                "\(.applicationName) 알람 몇 시",
+                "\(.applicationName) 알람 언제",
+            ],
+            shortTitle: "다음 알람",
+            systemImageName: "alarm.fill"
         )
         AppShortcut(
             intent: GasLockIntent(),

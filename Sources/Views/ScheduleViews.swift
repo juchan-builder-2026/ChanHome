@@ -118,6 +118,8 @@ struct ScheduleEditView: View {
     @State private var turnOn = false
     @State private var useTemp = false
     @State private var temp = 26
+    @State private var useLevel = false
+    @State private var level = 100
     @State private var loaded = false
 
     enum Kind: String, CaseIterable, Identifiable {
@@ -181,6 +183,18 @@ struct ScheduleEditView: View {
                     }
                     .pickerStyle(.segmented)
 
+                    if turnOn && kind == .light {
+                        Toggle("밝기도 맞추기", isOn: $useLevel)
+                        if useLevel {
+                            HStack(spacing: 12) {
+                                Image(systemName: "sun.min").foregroundStyle(.secondary)
+                                Slider(value: Binding(get: { Double(level) }, set: { level = Int($0.rounded()) }), in: 1...100)
+                                Image(systemName: "sun.max.fill").foregroundStyle(.secondary)
+                                Text("\(level)%").monospacedDigit().foregroundStyle(.secondary).frame(width: 48, alignment: .trailing)
+                            }
+                        }
+                    }
+
                     if turnOn && (kind == .aircon || kind == .heat) {
                         Toggle("온도도 맞추기", isOn: $useTemp)
                         if useTemp {
@@ -232,6 +246,7 @@ struct ScheduleEditView: View {
             room = original.room
             switch original.action {
             case .light(let on): kind = .light; turnOn = on
+            case .lightLevel(let l): kind = .light; turnOn = true; useLevel = true; level = l
             case .sockets(let on): kind = .sockets; turnOn = on
             case .aircon(let on, let t): kind = .aircon; turnOn = on; useTemp = t != nil; temp = t ?? 26
             case .heat(let on, let t): kind = .heat; turnOn = on; useTemp = t != nil; temp = t ?? 22
@@ -249,7 +264,7 @@ struct ScheduleEditView: View {
         let parts = Calendar.current.dateComponents([.hour, .minute], from: time)
         let action: ScheduleAction
         switch kind {
-        case .light: action = .light(turnOn)
+        case .light: action = turnOn && useLevel ? .lightLevel(level) : .light(turnOn)
         case .sockets: action = .sockets(turnOn)
         case .aircon: action = .aircon(turnOn, turnOn && useTemp ? temp : nil)
         case .heat: action = .heat(turnOn, turnOn && useTemp ? temp : nil)
@@ -327,19 +342,18 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("백그라운드에서 일정 실행", isOn: $store.backgroundEnabled)
-                    Toggle("일정 실행 시 자동 로그인", isOn: $store.autoLogin)
                     Toggle("실행 결과 알림", isOn: $store.notifyOnRun)
                 } header: {
                     Text("일정")
                 } footer: {
-                    Text("일정이 있으면 무음 오디오로 앱을 깨워 둡니다. 음악 재생에는 영향이 없어요. 세션이 만료된 상태에서 일정이 실행되면 저장된 계정으로 다시 로그인하며, 이때 공식 Smart eLife 앱은 로그아웃됩니다.")
+                    Text("일정이 있으면 무음 오디오로 앱을 깨워 둡니다. 음악 재생에는 영향이 없어요.")
                 }
 
                 Section {
                     LabeledContent("버전", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
                     LabeledContent("서버", value: "smartelife.apt.co.kr")
                 } footer: {
-                    Text("별도 서버 없이 이 iPhone이 아파트 서버와 직접 통신합니다.")
+                    Text("별도 서버 없이 이 iPhone이 아파트 서버와 직접 통신합니다. 조작할 때만 몇 초 로그인했다가 바로 로그아웃하므로 공식 Smart eLife 앱도 함께 쓸 수 있어요.")
                 }
             }
             .navigationTitle("설정")

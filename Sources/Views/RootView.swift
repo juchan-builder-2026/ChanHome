@@ -88,7 +88,7 @@ struct LoginView: View {
                     }
                     .disabled(id.isEmpty || password.isEmpty || home.isLoading)
                 } footer: {
-                    Text("이 iPhone이 아파트 서버(smartelife.apt.co.kr)에 직접 연결합니다. 계정 정보는 이 기기의 키체인에만 저장돼요. Smart eLife는 한 기기만 로그인되므로, 여기서 로그인하면 공식 앱은 로그아웃됩니다.")
+                    Text("처음 한 번만 입력하면 이 iPhone의 키체인에 저장돼요. 앱은 조작할 때만 몇 초 로그인했다가 바로 로그아웃하므로 공식 Smart eLife 앱도 그대로 쓸 수 있어요.")
                 }
             }
         }

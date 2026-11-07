@@ -1,8 +1,10 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 /// 화면 상태 + 기기 제어. 모든 제어는 사용자가 누른 그 동작만 그대로 보낸다.
-/// 제어 후에는 서버에서 상태를 다시 읽어 실제로 반영된 값만 보여준다.
+/// 로그인은 조작(또는 당겨서 새로고침)할 때만 잠깐 하고 바로 로그아웃한다.
+/// 화면에는 마지막으로 확인한 상태를 보여준다.
 @MainActor
 final class HomeStore: ObservableObject {
     static let shared = HomeStore()
@@ -18,7 +20,6 @@ final class HomeStore: ObservableObject {
     }
 
     let isDemo: Bool
-    private var pollTask: Task<Void, Never>?
     private var verifyTask: Task<Void, Never>?
 
     init() {
@@ -28,10 +29,11 @@ final class HomeStore: ObservableObject {
         if isDemo {
             isSignedIn = !arguments.contains("-demoLogin")
             devices = DemoData.devices
-            lastUpdated = Date()
+            lastUpdated = Date().addingTimeInterval(-180)
             selectedRoom = Room.defaultRoom
         } else {
             isSignedIn = CredentialStore.load() != nil
+            loadCache()
         }
     }
 
@@ -61,6 +63,13 @@ final class HomeStore: ObservableObject {
 
     var accountID: String? { isDemo ? "demo" : CredentialStore.load()?.id }
 
+    /// 밝기: 서버가 값을 주면 그 값, 아니면 마지막으로 설정한 값
+    func brightness(of device: Device) -> Int {
+        if let value = device.brightness { return value }
+        let saved = UserDefaults.standard.integer(forKey: "brightness.\(device.uid)")
+        return saved > 0 ? saved : 100
+    }
+
     // MARK: - Session
 
     func signIn(id: String, password: String) async -> Bool {
@@ -68,11 +77,11 @@ final class HomeStore: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            try await ElifeClient.shared.login(id: id, password: password)
+            let list = try await ElifeClient.shared.verify(id: id, password: password)
             CredentialStore.save(Credentials(id: id, password: password))
+            apply(list)
             isSignedIn = true
             message = nil
-            await refresh(quiet: true)
             ScheduleStore.shared.updateBackgroundMode()
             return true
         } catch {
@@ -83,22 +92,33 @@ final class HomeStore: ObservableObject {
 
     func signOut() {
         CredentialStore.clear()
-        Task { await ElifeClient.shared.reset() }
+        Task { await ElifeClient.shared.logoutNow() }
         devices = []
+        lastUpdated = nil
+        UserDefaults.standard.removeObject(forKey: "deviceCache")
         isSignedIn = false
         message = nil
-        stopPolling()
         ScheduleStore.shared.updateBackgroundMode()
     }
 
+    /// 앱을 열 때: 저장된 상태가 없을 때만 한 번 불러온다 (그 외엔 로그인하지 않음)
     func becameActive() {
-        guard isSignedIn else { return }
-        Task { await refresh(quiet: devices.isEmpty == false) }
-        startPolling()
+        guard isSignedIn, !isDemo, devices.isEmpty else { return }
+        Task { await refresh() }
     }
 
+    /// 백그라운드로 갈 때: 남아 있는 로그인을 바로 정리
     func enteredBackground() {
-        stopPolling()
+        guard !isDemo else { return }
+        let box = BackgroundTaskBox()
+        box.id = UIApplication.shared.beginBackgroundTask(withName: "logout") {
+            UIApplication.shared.endBackgroundTask(box.id)
+            box.id = .invalid
+        }
+        Task {
+            await ElifeClient.shared.logoutNow()
+            if box.id != .invalid { UIApplication.shared.endBackgroundTask(box.id) }
+        }
     }
 
     func refresh(quiet: Bool = false) async {
@@ -107,31 +127,20 @@ final class HomeStore: ObservableObject {
         if !quiet { isLoading = true }
         defer { if !quiet { isLoading = false } }
         do {
-            devices = try await ElifeClient.shared.fetchDevices(allowLogin: true)
-            lastUpdated = Date()
+            apply(try await ElifeClient.shared.fetchDevices())
             message = nil
-            if !rooms.isEmpty && !rooms.contains(selectedRoom) {
-                selectedRoom = rooms.contains(Room.defaultRoom) ? Room.defaultRoom : rooms[0]
-            }
         } catch {
             handle(error)
         }
     }
 
-    private func startPolling() {
-        pollTask?.cancel()
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
-                if Task.isCancelled { break }
-                await self?.refresh(quiet: true)
-            }
+    private func apply(_ list: [Device]) {
+        devices = list
+        lastUpdated = Date()
+        if !rooms.isEmpty && !rooms.contains(selectedRoom) {
+            selectedRoom = rooms.contains(Room.defaultRoom) ? Room.defaultRoom : rooms[0]
         }
-    }
-
-    private func stopPolling() {
-        pollTask?.cancel()
-        pollTask = nil
+        saveCache()
     }
 
     private func handle(_ error: Error) {
@@ -141,17 +150,44 @@ final class HomeStore: ObservableObject {
         message = error.localizedDescription
     }
 
+    // MARK: - Cache (마지막으로 확인한 상태)
+
+    private func saveCache() {
+        guard !isDemo, let data = try? JSONEncoder().encode(DeviceCache(devices: devices, updated: lastUpdated)) else { return }
+        UserDefaults.standard.set(data, forKey: "deviceCache")
+    }
+
+    private func loadCache() {
+        guard let data = UserDefaults.standard.data(forKey: "deviceCache"),
+              let cache = try? JSONDecoder().decode(DeviceCache.self, from: data) else { return }
+        devices = cache.devices
+        lastUpdated = cache.updated
+    }
+
     // MARK: - Controls
 
     func setLight(_ device: Device, on: Bool) {
         perform(device, optimistic: ["status": on ? "on" : "off"]) {
-            try await $0.controlAll(type: "light", uid: device.uid, control: on ? "on" : "off", allowLogin: true)
+            try await $0.controlAll(type: "light", uid: device.uid, control: on ? "on" : "off")
+        }
+    }
+
+    /// 밝기 1~100. 꺼져 있으면 먼저 켠다 (밝기 값만 보내면 켜지지 않음 — 실제 기록 확인)
+    func setBrightness(_ device: Device, _ value: Int) {
+        let level = min(max(value, 1), 100)
+        UserDefaults.standard.set(level, forKey: "brightness.\(device.uid)")
+        let wasOn = device.isOn == true
+        perform(device, optimistic: ["status": "on", "value": String(level)]) { client in
+            if !wasOn {
+                try await client.controlAll(type: "light", uid: device.uid, control: "on")
+            }
+            try await client.control(type: "light", uid: device.uid, operation: ["value": level])
         }
     }
 
     func setSocket(_ device: Device, on: Bool) {
         perform(device, optimistic: ["status": on ? "on" : "off"]) {
-            try await $0.controlAll(type: "wallsocket", uid: device.uid, control: on ? "on" : "off", allowLogin: true)
+            try await $0.controlAll(type: "wallsocket", uid: device.uid, control: on ? "on" : "off")
         }
     }
 
@@ -159,37 +195,37 @@ final class HomeStore: ObservableObject {
     func setPower(_ device: Device, on: Bool) {
         let optimistic: [String: String] = device.status == nil ? [:] : ["status": on ? "on" : "off"]
         perform(device, optimistic: optimistic) {
-            try await $0.control(type: device.type, uid: device.uid, operation: ["control": on ? "on" : "off"], allowLogin: true)
+            try await $0.control(type: device.type, uid: device.uid, operation: ["control": on ? "on" : "off"])
         }
     }
 
     func setTemperature(_ device: Device, _ value: Int) {
         perform(device, optimistic: ["set_temp": String(value)]) {
-            try await $0.control(type: device.type, uid: device.uid, operation: ["set_temp": String(value)], allowLogin: true)
+            try await $0.control(type: device.type, uid: device.uid, operation: ["set_temp": String(value)])
         }
     }
 
     func setAirconMode(_ device: Device, _ mode: AirconMode) {
         perform(device, optimistic: ["mode": mode.rawValue]) {
-            try await $0.control(type: "aircon", uid: device.uid, operation: ["mode": mode.rawValue], allowLogin: true)
+            try await $0.control(type: "aircon", uid: device.uid, operation: ["mode": mode.rawValue])
         }
     }
 
     func setWind(_ device: Device, _ wind: WindSpeed) {
         perform(device, optimistic: ["wind_speed": wind.rawValue]) {
-            try await $0.control(type: device.type, uid: device.uid, operation: ["wind_speed": wind.rawValue], allowLogin: true)
+            try await $0.control(type: device.type, uid: device.uid, operation: ["wind_speed": wind.rawValue])
         }
     }
 
     func setHeatAway(_ device: Device) {
         perform(device, optimistic: ["mode": "out"]) {
-            try await $0.control(type: "heat", uid: device.uid, operation: ["mode": "out"], allowLogin: true)
+            try await $0.control(type: "heat", uid: device.uid, operation: ["mode": "out"])
         }
     }
 
     func closeGas(_ device: Device) {
         perform(device, optimistic: ["status": "close"]) {
-            try await $0.control(type: "gas", uid: device.uid, operation: ["control": "close"], allowLogin: true)
+            try await $0.control(type: "gas", uid: device.uid, operation: ["control": "close"])
         }
     }
 
@@ -210,6 +246,7 @@ final class HomeStore: ObservableObject {
                 if !isDemo {
                     try await action(ElifeClient.shared)
                 }
+                saveCache()
                 scheduleVerify()
             } catch {
                 if let previous { update(device.uid) { $0.op = previous } }
@@ -223,27 +260,38 @@ final class HomeStore: ObservableObject {
         change(&devices[index])
     }
 
-    /// 서버 반영 확인용 재조회 (연속 조작은 하나로 묶음)
+    /// 서버 반영 확인용 재조회 — 같은 로그인 안에서 처리된 뒤 로그아웃
     private func scheduleVerify() {
+        guard !isDemo else { return }
         verifyTask?.cancel()
         verifyTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: .seconds(1))
             if Task.isCancelled { return }
             await self?.refresh(quiet: true)
         }
     }
 }
 
+private struct DeviceCache: Codable {
+    var devices: [Device]
+    var updated: Date?
+}
+
+final class BackgroundTaskBox {
+    var id: UIBackgroundTaskIdentifier = .invalid
+}
+
 /// 시뮬레이터 스크린샷용 가짜 데이터 (네트워크를 전혀 쓰지 않음)
 enum DemoData {
     static let devices: [Device] = [
-        Device(uid: "D-L3", type: "light", name: "침실3등", room: "침실3", op: ["status": "on", "location_name": "침실3"]),
+        Device(uid: "D-L3", type: "light", name: "침실3등", room: "침실3", op: ["status": "on", "value": "70"]),
         Device(uid: "D-A3", type: "aircon", name: "에어컨", room: "침실3",
                op: ["status": "off", "mode": "cool", "set_temp": "26", "current_temp": "27", "wind_speed": "high"]),
         Device(uid: "D-H3", type: "heat", name: "난방", room: "침실3", op: ["set_temp": "22", "current_temp": "24"]),
         Device(uid: "D-S31", type: "wallsocket", name: "콘센트1", room: "침실3", op: ["status": "on"]),
         Device(uid: "D-S32", type: "wallsocket", name: "콘센트2", room: "침실3", op: ["status": "off"]),
         Device(uid: "D-L0", type: "light", name: "거실1등", room: "거실", op: ["status": "off"]),
+        Device(uid: "D-L0b", type: "light", name: "거실2등", room: "거실", op: ["status": "on"]),
         Device(uid: "D-A0", type: "aircon", name: "에어컨", room: "거실",
                op: ["status": "off", "mode": "cool", "set_temp": "27", "current_temp": "28", "wind_speed": "low"]),
         Device(uid: "D-L1", type: "light", name: "침실1등", room: "침실1", op: ["status": "off"]),

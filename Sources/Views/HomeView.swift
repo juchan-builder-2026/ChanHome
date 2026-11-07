@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var home: HomeStore
     @State private var climateUID: String?
+    @State private var lightUID: String?
     @State private var showSettings = false
     @State private var confirmAllOff = false
 
@@ -25,15 +26,16 @@ struct HomeView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             SectionLabel("조명")
                             if lights.count == 1, let light = lights.first {
-                                LightWideTile(device: light, busy: home.busy.contains(light.uid)) {
+                                LightWideTile(device: light, busy: home.busy.contains(light.uid),
+                                              brightness: home.brightness(of: light)) {
                                     home.setLight(light, on: light.isOn != true)
-                                }
+                                } onBrightness: { home.setBrightness(light, $0) }
                             } else {
                                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
                                     ForEach(lights) { light in
                                         LightTile(device: light, busy: home.busy.contains(light.uid)) {
                                             home.setLight(light, on: light.isOn != true)
-                                        }
+                                        } onLongPress: { lightUID = light.uid }
                                     }
                                 }
                             }
@@ -78,7 +80,7 @@ struct HomeView: View {
                     WholeHomeSection(confirmAllOff: $confirmAllOff)
 
                     if let updated = home.lastUpdated {
-                        Text("업데이트 \(updated.formatted(date: .omitted, time: .shortened))")
+                        Text("마지막 확인 \(updated.formatted(.relative(presentation: .named))) · 당겨서 새로고침")
                             .font(.footnote)
                             .foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity)
@@ -101,6 +103,9 @@ struct HomeView: View {
             .refreshable { await home.refresh(quiet: true) }
             .sheet(item: Binding(get: { climateUID.map { SheetID(id: $0) } }, set: { climateUID = $0?.id })) { item in
                 ClimateSheet(uid: item.id)
+            }
+            .sheet(item: Binding(get: { lightUID.map { SheetID(id: $0) } }, set: { lightUID = $0?.id })) { item in
+                LightSheet(uid: item.id)
             }
             .sheet(isPresented: $showSettings) { SettingsView() }
             .confirmationDialog("집 안의 모든 조명을 끌까요?", isPresented: $confirmAllOff, titleVisibility: .visible) {
@@ -151,6 +156,7 @@ struct LightTile: View {
     let device: Device
     let busy: Bool
     let action: () -> Void
+    var onLongPress: () -> Void = {}
 
     private var isOn: Bool { device.isOn == true }
 
@@ -174,6 +180,7 @@ struct LightTile: View {
             .card()
         }
         .buttonStyle(PressableStyle())
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in onLongPress() })
         .sensoryFeedback(.impact(weight: .light), trigger: isOn)
         .animation(.easeOut(duration: 0.2), value: isOn)
     }
@@ -183,11 +190,14 @@ struct LightTile: View {
 struct LightWideTile: View {
     let device: Device
     let busy: Bool
+    let brightness: Int
     let action: () -> Void
+    let onBrightness: (Int) -> Void
 
     private var isOn: Bool { device.isOn == true }
 
     var body: some View {
+        VStack(spacing: 0) {
         Button(action: action) {
             HStack(spacing: 16) {
                 IconBadge(symbol: isOn ? "lightbulb.fill" : "lightbulb", tint: .yellow, active: isOn, size: 60)
@@ -211,9 +221,15 @@ struct LightWideTile: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .card(padding: 18)
+            .padding(18)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
+        BrightnessBar(value: brightness, active: isOn, height: 46, onCommit: onBrightness)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 18)
+        }
+        .background(CardBackground())
         .sensoryFeedback(.impact(weight: .light), trigger: isOn)
         .animation(.easeOut(duration: 0.2), value: isOn)
     }

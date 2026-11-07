@@ -1,7 +1,7 @@
 import Foundation
 
 /// controls/home.do 의 `_deviceListByType` 한 항목.
-struct Device: Identifiable, Hashable {
+struct Device: Identifiable, Hashable, Codable {
     let uid: String
     let type: String          // light, aircon, heat, wallsocket, vent, gas, alloffswitch ...
     let name: String          // device_name (예: 침실3등, 에어컨, 콘센트1)
@@ -22,6 +22,13 @@ struct Device: Identifiable, Hashable {
     var setTemp: Int? { op["set_temp"].flatMap { Int($0) } }
     var currentTemp: Int? { op["current_temp"].flatMap { Int($0) } }
     var mode: String? { op["mode"] }
+    /// 조명 밝기 (1~100). 서버가 operation 에 값을 줄 때만.
+    var brightness: Int? {
+        for key in ["value", "brightness", "dimming_value", "bright"] {
+            if let raw = op[key], let number = Int(raw), (1...100).contains(number) { return number }
+        }
+        return nil
+    }
     var wind: String? { op["wind_speed"] }
 
     /// "침실3등" → "조명", "거실1등" → "조명 1", "콘센트1" → "콘센트 1"

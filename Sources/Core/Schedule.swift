@@ -2,6 +2,7 @@ import Foundation
 
 enum ScheduleAction: Codable, Hashable {
     case light(Bool)
+    case lightLevel(Int)
     case aircon(Bool, Int?)
     case heat(Bool, Int?)
     case sockets(Bool)
@@ -9,6 +10,7 @@ enum ScheduleAction: Codable, Hashable {
     var title: String {
         switch self {
         case .light(let on): return on ? "조명 켜기" : "조명 끄기"
+        case .lightLevel(let level): return "조명 \(level)%로 켜기"
         case .aircon(let on, let temp):
             if !on { return "에어컨 끄기" }
             return temp.map { "에어컨 \($0)°로 켜기" } ?? "에어컨 켜기"
@@ -21,7 +23,7 @@ enum ScheduleAction: Codable, Hashable {
 
     var symbol: String {
         switch self {
-        case .light: return "lightbulb"
+        case .light, .lightLevel: return "lightbulb"
         case .aircon: return "snowflake"
         case .heat: return "flame"
         case .sockets: return "powerplug"

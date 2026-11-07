@@ -18,17 +18,12 @@ enum ScheduleKeys {
     }
 }
 
-private final class BackgroundTaskBox {
-    var id: UIBackgroundTaskIdentifier = .invalid
-}
-
 @MainActor
 final class ScheduleStore: ObservableObject {
     static let shared = ScheduleStore()
 
     @Published private(set) var schedules: [Schedule] = []
     @Published var backgroundEnabled: Bool { didSet { saveSettings(); updateBackgroundMode() } }
-    @Published var autoLogin: Bool { didSet { saveSettings() } }
     @Published var notifyOnRun: Bool { didSet { saveSettings() } }
     @Published private(set) var running: Set<UUID> = []
 
@@ -40,7 +35,6 @@ final class ScheduleStore: ObservableObject {
         let defaults = UserDefaults.standard
         isDemo = ProcessInfo.processInfo.arguments.contains("-demo")
         backgroundEnabled = defaults.object(forKey: "bgEnabled") as? Bool ?? true
-        autoLogin = defaults.object(forKey: "autoLogin") as? Bool ?? true
         notifyOnRun = defaults.object(forKey: "notifyOnRun") as? Bool ?? true
         if isDemo {
             schedules = Self.demoSchedules
@@ -151,7 +145,7 @@ final class ScheduleStore: ObservableObject {
         let result: String
         do {
             if !isDemo {
-                try await Self.execute(schedule.action, room: schedule.room, allowLogin: autoLogin)
+                try await Self.execute(schedule.action, room: schedule.room)
             }
             result = "완료"
             if notifyOnRun {
@@ -178,9 +172,9 @@ final class ScheduleStore: ObservableObject {
     }
 
     /// 실제 제어: 실행 시점의 기기 목록에서 방/종류로 찾는다 (UID 고정 안 함)
-    private static func execute(_ action: ScheduleAction, room: String, allowLogin: Bool) async throws {
+    private static func execute(_ action: ScheduleAction, room: String) async throws {
         let client = ElifeClient.shared
-        let inRoom = try await client.fetchDevices(allowLogin: allowLogin).filter { $0.room == room }
+        let inRoom = try await client.fetchDevices().filter { $0.room == room }
         func first(_ type: String, _ name: String) throws -> Device {
             guard let device = inRoom.first(where: { $0.type == type }) else { throw ElifeError.noDevice(name) }
             return device
@@ -190,25 +184,34 @@ final class ScheduleStore: ObservableObject {
             let lights = inRoom.filter { $0.type == "light" }
             guard !lights.isEmpty else { throw ElifeError.noDevice("조명") }
             for light in lights {
-                try await client.controlAll(type: "light", uid: light.uid, control: on ? "on" : "off", allowLogin: allowLogin)
+                try await client.controlAll(type: "light", uid: light.uid, control: on ? "on" : "off")
+            }
+        case .lightLevel(let level):
+            let lights = inRoom.filter { $0.type == "light" }
+            guard !lights.isEmpty else { throw ElifeError.noDevice("조명") }
+            for light in lights {
+                if light.isOn != true {
+                    try await client.controlAll(type: "light", uid: light.uid, control: "on")
+                }
+                try await client.control(type: "light", uid: light.uid, operation: ["value": min(max(level, 1), 100)])
             }
         case .sockets(let on):
             let sockets = inRoom.filter { $0.type == "wallsocket" }
             guard !sockets.isEmpty else { throw ElifeError.noDevice("콘센트") }
             for socket in sockets {
-                try await client.controlAll(type: "wallsocket", uid: socket.uid, control: on ? "on" : "off", allowLogin: allowLogin)
+                try await client.controlAll(type: "wallsocket", uid: socket.uid, control: on ? "on" : "off")
             }
         case .aircon(let on, let temp):
             let device = try first("aircon", "에어컨")
-            try await client.control(type: "aircon", uid: device.uid, operation: ["control": on ? "on" : "off"], allowLogin: allowLogin)
+            try await client.control(type: "aircon", uid: device.uid, operation: ["control": on ? "on" : "off"])
             if on, let temp {
-                try await client.control(type: "aircon", uid: device.uid, operation: ["set_temp": String(temp)], allowLogin: allowLogin)
+                try await client.control(type: "aircon", uid: device.uid, operation: ["set_temp": String(temp)])
             }
         case .heat(let on, let temp):
             let device = try first("heat", "난방")
-            try await client.control(type: "heat", uid: device.uid, operation: ["control": on ? "on" : "off"], allowLogin: allowLogin)
+            try await client.control(type: "heat", uid: device.uid, operation: ["control": on ? "on" : "off"])
             if on, let temp {
-                try await client.control(type: "heat", uid: device.uid, operation: ["set_temp": String(temp)], allowLogin: allowLogin)
+                try await client.control(type: "heat", uid: device.uid, operation: ["set_temp": String(temp)])
             }
         }
     }
@@ -292,13 +295,12 @@ final class ScheduleStore: ObservableObject {
     private func saveSettings() {
         let defaults = UserDefaults.standard
         defaults.set(backgroundEnabled, forKey: "bgEnabled")
-        defaults.set(autoLogin, forKey: "autoLogin")
         defaults.set(notifyOnRun, forKey: "notifyOnRun")
     }
 
     private static var demoSchedules: [Schedule] {
         [
-            Schedule(hour: 7, minute: 30, weekdays: [2, 3, 4, 5, 6], room: "침실3", action: .light(true),
+            Schedule(hour: 7, minute: 30, weekdays: [2, 3, 4, 5, 6], room: "침실3", action: .lightLevel(60),
                      lastRun: Date(), lastResult: "완료"),
             Schedule(enabled: true, hour: 23, minute: 30, weekdays: [1, 2, 3, 4, 5, 6, 7], room: "침실3", action: .light(false)),
             Schedule(enabled: false, hour: 18, minute: 0, weekdays: [1, 7], room: "침실3", action: .aircon(true, 26)),

@@ -4,30 +4,33 @@ import Foundation
 /// 요청 형식은 검증된 파이썬 클라이언트(pickle-smarthome app/elife.py)를 그대로 옮겼다.
 ///  - 로그인: POST /common/nativeToken.ajax → POST /login.ajax (AES 암호화 ID/PW)
 ///  - 기기 목록/상태: GET /controls/home.do (Bearer + dpk 헤더) 의 _deviceListByType
-///  - 조명/콘센트: POST /device/control/all.ajax {type, uid, control, is_control_all:"N"}
+///  - 조명/콘센트 on·off: POST /device/control/all.ajax {type, uid, control, is_control_all:"N"}
+///  - 조명 밝기: POST /device/control.ajax {type:"light", uid, operation:{value: 1~100}}
 ///  - 에어컨/난방/환기/가스: POST /device/control.ajax {type, uid, operation}
-/// 서버는 단일 기기 로그인이라, 로그인하면 공식 Smart eLife 앱의 세션은 끊어진다.
+///  - 로그아웃: POST /common/disablePush.ajax
+///
+/// 세션 전략 (원래 쓰던 방식): **조작할 때만** 로그인 → 조작 → 바로 로그아웃.
+/// 서버가 한 기기만 로그인시키므로, 로그인을 오래 붙잡고 있지 않아야 공식 앱도 같이 쓸 수 있다.
+/// 연달아 누른 조작은 한 번의 로그인으로 묶고, 마지막 조작 2.5초 뒤 로그아웃한다.
 actor ElifeClient {
     static let shared = ElifeClient()
 
     static let userAgent = "Dalvik/2.1.0 (Linux; U; Android 14; SM-S918B Build/UP1A.231005.007) DAELIM/ANDROID"
+    private static let logoutDelay: Duration = .milliseconds(2500)
     private let base = "https://smartelife.apt.co.kr"
-    private let session: URLSession
-    private var token: String
+
+    private var session: URLSession = ElifeClient.makeSession()
+    private var token = ""
     private var pageCSRF = ""
+    private var loggedIn = false
+    private var inFlight = 0
+    private var logoutTask: Task<Void, Never>?
     private let deviceUUID: String
 
     init() {
-        CookieVault.restore()
-        let config = URLSessionConfiguration.default
-        config.httpCookieStorage = HTTPCookieStorage.shared
-        config.httpCookieAcceptPolicy = .always
-        config.httpShouldSetCookies = true
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        config.urlCache = nil
-        config.timeoutIntervalForRequest = 20
-        session = URLSession(configuration: config)
-        token = SecureStore.string("token") ?? ""
+        // v1.0.0 에서 남겨둔 세션 정보는 더 이상 쓰지 않으므로 정리
+        SecureStore.set(nil, for: "token")
+        SecureStore.set(nil, for: "cookies")
         if let saved = SecureStore.string("deviceUUID") {
             deviceUUID = saved
         } else {
@@ -37,10 +40,106 @@ actor ElifeClient {
         }
     }
 
-    // MARK: - Public API
+    /// 파이썬 requests.Session() 처럼, 로그인마다 쿠키가 비어 있는 새 세션
+    private static func makeSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.httpCookieAcceptPolicy = .always
+        config.httpShouldSetCookies = true
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.urlCache = nil
+        config.timeoutIntervalForRequest = 15
+        return URLSession(configuration: config)
+    }
 
-    func login(id: String, password: String) async throws {
-        CookieVault.clear()
+    // MARK: - Public API (모두 로그인 → 작업 → 로그아웃 예약)
+
+    /// 계정 확인용 로그인 (로그인 화면에서 1회). 성공하면 바로 로그아웃한다.
+    func verify(id: String, password: String) async throws -> [Device] {
+        try await login(id: id, password: password)
+        defer { scheduleLogout() }
+        return try await loadHome()
+    }
+
+    /// 기기 목록 + 현재 상태
+    func fetchDevices() async throws -> [Device] {
+        try await withSession { try await self.loadHome() }
+    }
+
+    /// 조명 / 콘센트 on·off
+    func controlAll(type: String, uid: String, control: String) async throws {
+        try await withSession {
+            try await self.postControl("/device/control/all.ajax", [
+                "type": type, "uid": uid, "control": control, "is_control_all": "N",
+            ])
+        }
+    }
+
+    /// 에어컨 / 난방 / 환기 / 가스 / 조명 밝기
+    /// operation 예) ["control": "on"], ["set_temp": "26"], ["mode": "cool"], ["value": 80]
+    func control(type: String, uid: String, operation: [String: Any]) async throws {
+        try await withSession {
+            try await self.postControl("/device/control.ajax", [
+                "type": type, "uid": uid, "operation": operation,
+            ])
+        }
+    }
+
+    /// 대기 중인 로그아웃을 지금 바로 실행 (앱이 백그라운드로 갈 때)
+    func logoutNow() async {
+        logoutTask?.cancel()
+        logoutTask = nil
+        guard loggedIn, inFlight == 0 else { return }
+        loggedIn = false
+        _ = try? await send("/common/disablePush.ajax", json: [:], headers: ["_csrf": pageCSRF])
+        token = ""
+        pageCSRF = ""
+        session.invalidateAndCancel()
+        session = Self.makeSession()
+    }
+
+    // MARK: - Session
+
+    private func withSession<T>(_ work: () async throws -> T) async throws -> T {
+        logoutTask?.cancel()
+        logoutTask = nil
+        inFlight += 1
+        defer {
+            inFlight -= 1
+            scheduleLogout()
+        }
+        if !loggedIn {
+            try await loginWithSavedAccount()
+        }
+        do {
+            return try await work()
+        } catch ElifeError.noLogin {
+            // 그 사이 다른 기기(공식 앱)가 로그인해서 끊긴 경우: 1회만 다시 로그인
+            loggedIn = false
+            try await loginWithSavedAccount()
+            return try await work()
+        }
+    }
+
+    private func scheduleLogout() {
+        guard inFlight == 0, loggedIn else { return }
+        logoutTask?.cancel()
+        logoutTask = Task { [weak self] in
+            try? await Task.sleep(for: ElifeClient.logoutDelay)
+            if Task.isCancelled { return }
+            await self?.logoutNow()
+        }
+    }
+
+    private func loginWithSavedAccount() async throws {
+        guard let credentials = CredentialStore.load() else { throw ElifeError.needsCredentials }
+        try await login(id: credentials.id, password: credentials.password)
+        _ = try await loadHome()   // 제어용 페이지 _csrf 확보
+    }
+
+    private func login(id: String, password: String) async throws {
+        session.invalidateAndCancel()
+        session = Self.makeSession()
+        loggedIn = false
         pageCSRF = ""
         let (tokenData, tokenCode) = try await send("/common/nativeToken.ajax", json: [:])
         guard tokenCode == 200 else { throw ElifeError.http(tokenCode) }
@@ -73,66 +172,8 @@ actor ElifeClient {
             throw ElifeError.loginFailed(message)
         }
         token = (json["daelim_elife"] as? String) ?? ""
-        SecureStore.setString(token, for: "token")
-    }
-
-    /// 기기 목록 + 현재 상태. 세션이 끊겼고 allowLogin 이면 저장된 계정으로 1회만 재로그인.
-    func fetchDevices(allowLogin: Bool) async throws -> [Device] {
-        if token.isEmpty {
-            guard allowLogin else { throw ElifeError.noLogin }
-            try await relogin()
-        }
-        do {
-            return try await loadHome()
-        } catch let error as ElifeError where error.isSessionProblem && allowLogin {
-            try await relogin()
-            return try await loadHome()
-        }
-    }
-
-    /// 조명 / 콘센트 on·off
-    func controlAll(type: String, uid: String, control: String, allowLogin: Bool) async throws {
-        try await withSession(allowLogin) {
-            try await self.postControl("/device/control/all.ajax", [
-                "type": type, "uid": uid, "control": control, "is_control_all": "N",
-            ])
-        }
-    }
-
-    /// 에어컨 / 난방 / 환기 / 가스: operation 예) ["control": "on"], ["set_temp": "26"], ["mode": "cool"]
-    func control(type: String, uid: String, operation: [String: String], allowLogin: Bool) async throws {
-        try await withSession(allowLogin) {
-            try await self.postControl("/device/control.ajax", [
-                "type": type, "uid": uid, "operation": operation,
-            ])
-        }
-    }
-
-    func reset() {
-        token = ""
-        pageCSRF = ""
-        SecureStore.setString(nil, for: "token")
-        CookieVault.clear()
-    }
-
-    // MARK: - Session
-
-    private func relogin() async throws {
-        guard let credentials = CredentialStore.load() else { throw ElifeError.needsCredentials }
-        try await login(id: credentials.id, password: credentials.password)
-    }
-
-    private func withSession(_ allowLogin: Bool, _ operation: () async throws -> Void) async throws {
-        if pageCSRF.isEmpty || token.isEmpty {
-            _ = try await fetchDevices(allowLogin: allowLogin)
-        }
-        do {
-            try await operation()
-        } catch ElifeError.noLogin where allowLogin {
-            try await relogin()
-            _ = try await loadHome()
-            try await operation()
-        }
+        pageCSRF = csrf
+        loggedIn = true
     }
 
     private func loadHome() async throws -> [Device] {
@@ -194,7 +235,6 @@ actor ElifeClient {
         }
         do {
             let (data, response) = try await session.data(for: request)
-            CookieVault.save()
             return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
         } catch {
             throw ElifeError.network(error.localizedDescription)

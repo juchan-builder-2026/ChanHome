@@ -172,16 +172,18 @@ final class HomeStore: ObservableObject {
         }
     }
 
-    /// 밝기 1~100. 꺼져 있으면 먼저 켠다 (밝기 값만 보내면 켜지지 않음 — 실제 기록 확인)
+    /// 밝기 (6단계). 서버 형식 "light_000_050" — 방 3에서 실제로 바뀌는 것 확인함.
+    /// 꺼져 있으면 먼저 켠다.
     func setBrightness(_ device: Device, _ value: Int) {
-        let level = min(max(value, 1), 100)
+        let level = Device.snapBrightness(value)
+        let payload = device.brightnessValue(level)
         UserDefaults.standard.set(level, forKey: "brightness.\(device.uid)")
         let wasOn = device.isOn == true
-        perform(device, optimistic: ["status": "on", "value": String(level)]) { client in
+        perform(device, optimistic: ["status": "on", "value": payload]) { client in
             if !wasOn {
                 try await client.controlAll(type: "light", uid: device.uid, control: "on")
             }
-            try await client.control(type: "light", uid: device.uid, operation: ["value": level])
+            try await client.control(type: "light", uid: device.uid, operation: ["value": payload])
         }
     }
 
@@ -284,7 +286,7 @@ final class BackgroundTaskBox {
 /// 시뮬레이터 스크린샷용 가짜 데이터 (네트워크를 전혀 쓰지 않음)
 enum DemoData {
     static let devices: [Device] = [
-        Device(uid: "D-L3", type: "light", name: "침실3등", room: "침실3", op: ["status": "on", "value": "70"]),
+        Device(uid: "D-L3", type: "light", name: "침실3등", room: "침실3", op: ["status": "on", "value": "light_000_067", "options": "light_999_100"]),
         Device(uid: "D-A3", type: "aircon", name: "에어컨", room: "침실3",
                op: ["status": "off", "mode": "cool", "set_temp": "26", "current_temp": "27", "wind_speed": "high"]),
         Device(uid: "D-H3", type: "heat", name: "난방", room: "침실3", op: ["set_temp": "22", "current_temp": "24"]),

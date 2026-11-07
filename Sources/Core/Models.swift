@@ -22,12 +22,32 @@ struct Device: Identifiable, Hashable, Codable {
     var setTemp: Int? { op["set_temp"].flatMap { Int($0) } }
     var currentTemp: Int? { op["current_temp"].flatMap { Int($0) } }
     var mode: String? { op["mode"] }
-    /// 조명 밝기 (1~100). 서버가 operation 에 값을 줄 때만.
+    /// 조명 밝기. 서버 형식(실측): value = "light_000_083" (색온도_밝기), options = "light_999_100" (최대값)
     var brightness: Int? {
-        for key in ["value", "brightness", "dimming_value", "bright"] {
-            if let raw = op[key], let number = Int(raw), (1...100).contains(number) { return number }
-        }
+        guard let raw = op["value"] else { return nil }
+        let parts = raw.split(separator: "_")
+        if parts.count == 3, parts[0] == "light", let level = Int(parts[2]) { return level }
         return nil
+    }
+
+    /// 밝기 조절 지원 여부: options 의 최대 밝기 값이 0보다 크면 지원
+    var supportsBrightness: Bool {
+        let parts = (op["options"] ?? "").split(separator: "_")
+        if parts.count == 3, parts[0] == "light", let maxLevel = Int(parts[2]) { return maxLevel > 0 }
+        return brightness != nil
+    }
+
+    /// 보낼 값: 색온도 자리는 현재 값을 그대로 유지 (예: light_000_050)
+    func brightnessValue(_ level: Int) -> String {
+        let parts = (op["value"] ?? "").split(separator: "_")
+        let color = parts.count == 3 && parts[0] == "light" ? String(parts[1]) : "000"
+        return "light_\(color)_" + String(format: "%03d", min(max(level, 1), 100))
+    }
+
+    /// 실측상 6단계로 맞춰짐 (30 → 33, 83, 100)
+    static let brightnessSteps = [17, 33, 50, 67, 83, 100]
+    static func snapBrightness(_ value: Int) -> Int {
+        brightnessSteps.min { abs($0 - value) < abs($1 - value) } ?? 100
     }
     var wind: String? { op["wind_speed"] }
 

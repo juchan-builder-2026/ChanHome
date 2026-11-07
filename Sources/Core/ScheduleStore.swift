@@ -193,7 +193,7 @@ final class ScheduleStore: ObservableObject {
                 if light.isOn != true {
                     try await client.controlAll(type: "light", uid: light.uid, control: "on")
                 }
-                try await client.control(type: "light", uid: light.uid, operation: ["value": min(max(level, 1), 100)])
+                try await client.control(type: "light", uid: light.uid, operation: ["value": light.brightnessValue(Device.snapBrightness(level))])
             }
         case .sockets(let on):
             let sockets = inRoom.filter { $0.type == "wallsocket" }

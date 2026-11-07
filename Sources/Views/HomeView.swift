@@ -225,9 +225,11 @@ struct LightWideTile: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
-        BrightnessBar(value: brightness, active: isOn, height: 46, onCommit: onBrightness)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 18)
+        if device.supportsBrightness {
+            BrightnessBar(value: brightness, active: isOn, height: 46, onCommit: onBrightness)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
+        }
         }
         .background(CardBackground())
         .sensoryFeedback(.impact(weight: .light), trigger: isOn)

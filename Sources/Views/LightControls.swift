@@ -43,14 +43,14 @@ struct BrightnessBar: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
                         let ratio = min(max(gesture.location.x / max(width, 1), 0), 1)
-                        dragValue = max(1, Int((ratio * 100).rounded()))
+                        dragValue = Device.snapBrightness(Int((ratio * 100).rounded()))
                     }
                     .onEnded { _ in
                         if let final = dragValue { onCommit(final) }
                         dragValue = nil
                     }
             )
-            .sensoryFeedback(.selection, trigger: (dragValue ?? 0) / 10)
+            .sensoryFeedback(.selection, trigger: dragValue ?? 0)
         }
         .frame(height: height)
         .accessibilityElement()
@@ -58,8 +58,8 @@ struct BrightnessBar: View {
         .accessibilityValue("\(shown)%")
         .accessibilityAdjustableAction { direction in
             switch direction {
-            case .increment: onCommit(min(value + 10, 100))
-            case .decrement: onCommit(max(value - 10, 1))
+            case .increment: onCommit(Device.brightnessSteps.first { $0 > value } ?? 100)
+            case .decrement: onCommit(Device.brightnessSteps.last { $0 < value } ?? 17)
             @unknown default: break
             }
         }

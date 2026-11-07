@@ -188,7 +188,7 @@ struct ScheduleEditView: View {
                         if useLevel {
                             HStack(spacing: 12) {
                                 Image(systemName: "sun.min").foregroundStyle(.secondary)
-                                Slider(value: Binding(get: { Double(level) }, set: { level = Int($0.rounded()) }), in: 1...100)
+                                Slider(value: Binding(get: { Double(level) }, set: { level = Device.snapBrightness(Int($0.rounded())) }), in: 17...100)
                                 Image(systemName: "sun.max.fill").foregroundStyle(.secondary)
                                 Text("\(level)%").monospacedDigit().foregroundStyle(.secondary).frame(width: 48, alignment: .trailing)
                             }

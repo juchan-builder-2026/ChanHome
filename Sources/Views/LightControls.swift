@@ -21,16 +21,20 @@ struct BrightnessBar: View {
                 Capsule()
                     .fill(active || dragValue != nil ? Color.yellow : Color(.systemGray3))
                     .frame(width: max(height, width * fraction))
+                let lit = active || dragValue != nil
                 HStack {
+                    // 아이콘은 항상 채워진 부분 위 → 켜져 있으면 검정
                     Image(systemName: shown < 50 ? "sun.min.fill" : "sun.max.fill")
                         .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(lit ? Color.black.opacity(0.75) : Color.secondary)
                     Spacer()
+                    // 숫자는 채워진 부분이 덮을 때만 검정, 아니면 시스템 글자색
                     Text("\(shown)%")
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
                         .contentTransition(.numericText(value: Double(shown)))
+                        .foregroundStyle(lit && shown >= 88 ? Color.black.opacity(0.75) : Color.primary.opacity(0.8))
                 }
-                .foregroundStyle(active || dragValue != nil ? Color.black.opacity(0.75) : Color.secondary)
                 .padding(.horizontal, 16)
             }
             .clipShape(Capsule())
